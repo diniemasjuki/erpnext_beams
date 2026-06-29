@@ -44,6 +44,9 @@ frappe.ui.form.on('Purchase Invoice', {
 			frm.set_df_property('supplier', 'read_only', 1);
 		}
 	},
+	refresh: function (frm) {
+		fetch_advances_from_mcts(frm);
+	},
 	bureau: function (frm) {
 		fetch_mode_of_payment_from_bureau(frm, frm.doc.bureau);
 	}
@@ -168,3 +171,43 @@ function fetch_mode_of_payment_from_bureau(frm, bureau) {
 	});
 }
 
+function fetch_advances_from_mcts(frm) {
+    // When opened from Monthly Consolidated Trip Sheet, fetch advances for the supplier (like "Get Advances Paid")
+		if (frappe.route_options && frappe.route_options.fetch_advances_from_mcts && frm.doc.supplier && frm.doc.__islocal) {
+			delete frappe.route_options.fetch_advances_from_mcts;
+			frappe.call({
+				method: "run_doc_method",
+				args: { docs: frm.doc, method: "set_advances" },
+				callback: function (r) {
+					if (!r.exc && r.docs && r.docs[0] && r.docs[0].advances && r.docs[0].advances.length) {
+						frm.clear_table("advances");
+						(r.docs[0].advances || []).forEach(function (row) {
+							frm.add_child("advances", row);
+						});
+						frm.refresh_field("advances");
+					}
+				},
+			});
+		}
+}
+
+/**
+ * Fetch cost head from the item doctype.
+ */
+function set_cost_head(cdt, cdn) {
+	let row = locals[cdt][cdn];
+	if (row.item_code) {
+		frappe.db.get_value('Item', row.item_code, 'cost_head')
+			.then(r => {
+				if (r.message && r.message.cost_head) {
+					frappe.model.set_value(cdt, cdn, 'cost_head', r.message.cost_head);
+				}
+			});
+	}
+}
+
+frappe.ui.form.on('Purchase Invoice Item', {
+	item_code: function(frm, cdt, cdn) {
+		set_cost_head(cdt, cdn);
+	}
+});
